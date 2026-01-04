@@ -1,5 +1,10 @@
 package eule
 
+import (
+	"log"
+	"math"
+)
+
 type env struct {
 	encl *env
 	vars map[string]Value
@@ -17,19 +22,46 @@ func (e *env) load(name string) Value {
 	return e.vars[name]
 }
 
-type continueSignal empty
-type breakSignal empty
-type throwSignal Value
-type returnSignal Value
+type (
+	continueSignal empty
+	breakSignal    empty
+	throwSignal    Value
+	returnSignal   Value
+)
 
 type Interpreter struct {
 	global *Table
 	module *Table
 	env
 	callStack int
+	callArgs  []Value // Using only for native functions.
 }
 
-func (it *Interpreter) Interpret(tree []astDecl) {
+func NewInterpreter() *Interpreter {
+	return &Interpreter{
+		global:    &Table{Proto: nil, Pairs: make(map[String]Value)},
+		module:    &Table{Proto: nil, Pairs: make(map[String]Value)},
+		env:       env{encl: nil, vars: make(map[string]Value)},
+		callStack: 0,
+		callArgs:  []Value{},
+	}
+}
+
+func (it *Interpreter) GetArg(index int) Value {
+	if index < 0 || index > len(it.callArgs)-1 {
+		return Nihil{}
+	}
+	return it.callArgs[index]
+}
+
+func (it *Interpreter) Interpret(source []byte) {
+	it.env.vars["print"] = &Native{fn: nativePrint}
+	s := newScanner(source)
+	p := newParser(s)
+	tree, err := p.Parse()
+	if err != nil {
+		log.Fatal(err)
+	}
 	for _, node := range tree {
 		it.eval(node)
 	}
@@ -103,9 +135,23 @@ func (it *Interpreter) eval(node astNode) Value {
 	case *assignExpr:
 		return it.assignExpr(node)
 	case *prefixExpr:
+		return it.prefixExpr(node)
 	case *infixExpr:
+		return it.infixExpr(node)
 	case *postfixExpr:
+		return nil
 	case *callExpr:
+		callee := it.eval(node.left)
+		switch callee := callee.(type) {
+		case *Native:
+			args := []Value{}
+			for _, arg := range node.args {
+				args = append(args, it.eval(arg))
+			}
+			return callee.fn(it, args)
+		default:
+			panic("ERROR")
+		}
 	case *indexExpr:
 		return loadIndex(
 			it.eval(node.left),
@@ -223,6 +269,58 @@ func (it *Interpreter) assignExpr(node *assignExpr) Value {
 		panic(unreachable)
 	}
 	return value
+}
+
+func (it *Interpreter) prefixExpr(node *prefixExpr) Value {
+	rVal := it.eval(node.right)
+
+	switch node.op.tokenType {
+	case tokenMinus:
+		return -rVal.(Float)
+	case tokenPlus:
+		return +rVal.(Float)
+
+	case tokenExcl:
+		return Boolean(testValue(rVal))
+
+	default:
+		panic(unreachable)
+	}
+}
+
+func (it *Interpreter) infixExpr(node *infixExpr) Value {
+	lVal := it.eval(node.left)
+	rVal := it.eval(node.right)
+
+	switch node.op.tokenType {
+	case tokenEq:
+		return Boolean(rVal == lVal)
+	case tokenExclEq:
+		return Boolean(rVal != lVal)
+
+	case tokenLAngle:
+		return Boolean(rVal.(Float) < lVal.(Float))
+	case tokenLAngleEq:
+		return Boolean(rVal.(Float) <= lVal.(Float))
+	case tokenRAngle:
+		return Boolean(rVal.(Float) > lVal.(Float))
+	case tokenRAngleEq:
+		return Boolean(rVal.(Float) >= lVal.(Float))
+
+	case tokenPlus:
+		return rVal.(Float) + lVal.(Float)
+	case tokenMinus:
+		return rVal.(Float) - lVal.(Float)
+	case tokenStar:
+		return rVal.(Float) * lVal.(Float)
+	case tokenSlash:
+		return rVal.(Float) / lVal.(Float)
+	case tokenPercent:
+		return Float(math.Mod(float64(rVal.(Float)), float64(lVal.(Float))))
+
+	default:
+		panic(unreachable)
+	}
 }
 
 func storeIndex(object Value, index Value, value Value) {}

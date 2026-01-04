@@ -162,10 +162,9 @@ var precedences = map[tokenType]precedence{
 	tokenPlus:  precTerm,
 	tokenMinus: precTerm,
 
-	tokenStar:       precFact,
-	tokenSlash:      precFact,
-	tokenPercent:    precFact,
-	tokenTildeSlash: precFact,
+	tokenStar:    precFact,
+	tokenSlash:   precFact,
+	tokenPercent: precFact,
 
 	tokenDot:    precCall,
 	tokenLParen: precCall,
@@ -565,14 +564,13 @@ func (p *parser) led(nud astExpr, canAssign bool) astExpr {
 		goto assign
 
 	case p.match(tokenPlus), p.match(tokenMinus),
-		p.match(tokenStar), p.match(tokenSlash),
-		p.match(tokenPercent), p.match(tokenTildeSlash),
+		p.match(tokenStar), p.match(tokenSlash), p.match(tokenPercent),
 		p.match(tokenPipe), p.match(tokenAmper), p.match(tokenCircum):
 		op := p.prev
 		return &infixExpr{
-			left:    nud,
-			opToken: op,
-			right:   p.precExpr(precedences[op.tokenType]),
+			left:  nud,
+			op:    op,
+			right: p.precExpr(precedences[op.tokenType]),
 		}
 	default:
 		panic(unreachable)

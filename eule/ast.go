@@ -113,19 +113,19 @@ type assignExpr struct {
 }
 
 type prefixExpr struct {
-	opToken token
-	right   astExpr
+	op    token
+	right astExpr
 }
 
 type infixExpr struct {
-	left    astExpr
-	opToken token
-	right   astExpr
+	left  astExpr
+	op    token
+	right astExpr
 }
 
 type postfixExpr struct {
-	left    astExpr
-	opToken token
+	left astExpr
+	op   token
 }
 
 type callExpr struct {

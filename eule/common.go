@@ -30,11 +30,11 @@ const (
 // Interpreter modes.
 const (
 	// Automaticly inserts semicolons.
-	modeAutoSemicolons = true
+	modeAutoSemicolons = false
 	// Allows class syntax.
-	modeObjectOriented = true
+	modeObjectOriented = false
 	// Allows `function() => toReturn`` syntax.
-	modeArrowFunctions = true
+	modeArrowFunctions = false
 )
 
 // Language constants.

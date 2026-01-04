@@ -69,7 +69,7 @@ begin:
 	case isAlpha(char):
 		return s.identifier()
 	case isDigit(char, 10):
-		return s.number()
+		return s.number(char)
 	case char == '"':
 		return s.string()
 	}
@@ -187,26 +187,28 @@ func (s *scanner) identifier() token {
  * 3.14, 3.1_4, 3., 3..method() - good
  * 3_.14, 3._14, 3.1__4, 3abc, 3.14abc - bad
  */
-func (s *scanner) number() token {
+func (s *scanner) number(firstChar byte) token {
 	// Calculate base.
-	var base uint8 = 10
-	if b, ok := intBases[lowerChar(s.current())]; ok {
-		base = b
-		s.advance()
-		if !isDigit(s.current(), base) {
-			return s.errorToken("ERROR")
+	base := 10
+	if firstChar == '0' {
+		if b, ok := intBases[lowerChar(s.current())]; ok {
+			base = b
+			s.advance()
 		}
 	}
 
 	// readDigits returns false if literal ends with underscore.
 	readDigits := func() bool {
 		allowUnderscore := false
+		// To avoid return false when no one digit is readed.
+		notReaded := true
 		for isDigit(s.current(), base) ||
 			(allowUnderscore && s.current() == '_') {
 			allowUnderscore = s.current() != '_'
+			notReaded = false
 			s.advance()
 		}
-		return allowUnderscore
+		return allowUnderscore || notReaded
 	}
 
 	numberType := tokenInteger
@@ -253,20 +255,21 @@ func isAlpha(char byte) bool {
 		char == '_'
 }
 
-func isDigit(char byte, base uint8) bool {
+func isDigit(char byte, base int) bool {
+	baseChar := byte(base)
 	if base <= 10 {
-		return '0' <= char && char <= '0'+base-1
+		return '0' <= char && char <= '0'+baseChar-1
 	}
 	return ('0' <= char && char <= '9') ||
-		('a' <= char && char <= 'a'+base-1) ||
-		('A' <= char && char <= 'A'+base-1)
+		('a' <= char && char <= 'a'+baseChar-1) ||
+		('A' <= char && char <= 'A'+baseChar-1)
 }
 
 func lowerChar(char byte) byte {
 	return ('a' - 'A') | char
 }
 
-var intBases = map[byte]uint8{
+var intBases = map[byte]int{
 	'x': 16,
 	'o': 8,
 	'b': 2,
@@ -326,7 +329,6 @@ var dual = map[dualSymbol]tokenType{
 	{'>', '>'}: tokenRAngleAngle,
 	{'?', '.'}: tokenQuestDot,
 	{'?', '['}: tokenQuestLBrack,
-	{'~', '/'}: tokenTildeSlash,
 	{'|', '|'}: tokenPipePipe,
 	{'&', '&'}: tokenAmperAmper,
 	{'?', '?'}: tokenQuestQuest,
@@ -353,7 +355,6 @@ type tripleSymbol [3]byte
 
 var triple = map[tripleSymbol]tokenType{
 	{'.', '.', '.'}: tokenDotDotDot,
-	{'~', '/', '='}: tokenTildeSlashEq,
 	{'<', '<', '='}: tokenLAngleAngleEq,
 	{'>', '>', '='}: tokenRAngleAngleEq,
 	{'|', '|', '='}: tokenPipePipeEq,
