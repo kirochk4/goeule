@@ -1,1 +1,1 @@
-# Eule - small prototype-based programming language
+# Eule - small prototype-based programming language.

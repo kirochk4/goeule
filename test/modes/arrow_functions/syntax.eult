@@ -1,0 +1,4 @@
+function add(a, b) => a + b;
+
+print(add(2, 3));
+print((function(a, b) => a + b)(2, 3));
