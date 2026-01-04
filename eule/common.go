@@ -47,7 +47,6 @@ const (
 	stringFunction = "function"
 
 	typeOfNihil = stringNihil
-	typeOfFloat = "number"
 )
 
 type empty = struct{}
@@ -59,7 +58,7 @@ func panicf(format string, a ...any) {
 	panic(fmt.Sprintf(format, a...))
 }
 
-func formatFloat(f Float) string {
+func formatFloat(f Number) string {
 	return strconv.FormatFloat(float64(f), 'g', -1, 64)
 }
 

@@ -112,24 +112,7 @@ func (it *Interpreter) eval(node astNode) Value {
 		panic(returnSignal(it.eval(node.value)))
 	case *exprStmt:
 		return it.eval(node.expr)
-	/* == expressions ======================================================= */
-	case *identifierLit:
-		return it.load(node.varName)
-	case *nihilLit:
-		return Nihil{}
-	case *booleanLit:
-		return Boolean(node.value)
-	case *integerLit:
-		return Float(node.value)
-	case *floatLit:
-		return Float(node.value)
-	case *stringLit:
-		return String(node.value)
-	case *tableLit:
-		return it.tableLit(node)
-	case *functionLit:
-		return it.functionLit(node)
-
+		/* == expressions ======================================================= */
 	case *emptyExpr:
 		return nil
 	case *assignExpr:
@@ -141,23 +124,37 @@ func (it *Interpreter) eval(node astNode) Value {
 	case *postfixExpr:
 		return nil
 	case *callExpr:
-		callee := it.eval(node.left)
-		switch callee := callee.(type) {
-		case *Native:
-			args := []Value{}
-			for _, arg := range node.args {
-				args = append(args, it.eval(arg))
-			}
-			return callee.fn(it, args)
-		default:
-			panic("ERROR")
-		}
+		return it.callExpr(node)
 	case *indexExpr:
 		return loadIndex(
 			it.eval(node.left),
 			it.eval(node.index),
 		)
 	case *protoTableExpr:
+		tbl := it.tableLit(node.table)
+		proto := it.eval(node.proto)
+		if proto, ok := proto.(*Table); !ok {
+			tbl.Proto = proto
+		}
+		panic("ERROR")
+
+	case *identifierLit:
+		return it.load(node.varName)
+	case *nihilLit:
+		return Nihil{}
+	case *booleanLit:
+		return Boolean(node.value)
+	case *integerLit:
+		return Number(node.value)
+	case *floatLit:
+		return Number(node.value)
+	case *stringLit:
+		return String(node.value)
+	case *tableLit:
+		return it.tableLit(node)
+	case *functionLit:
+		return it.functionLit(node)
+
 	default:
 		panic(unreachable)
 	}
@@ -246,12 +243,23 @@ func (it *Interpreter) tryStmt(node *tryStmt) Value {
 	return nil
 }
 
-func (it *Interpreter) tableLit(node *tableLit) Value {
-	return nil
+func (it *Interpreter) tableLit(node *tableLit) *Table {
+	tbl := &Table{Proto: nil, Pairs: make(map[String]Value)}
+	for k, v := range node.pairs {
+		tbl.Pairs[String(it.eval(k).String())] = it.eval(v)
+	}
+	for i, v := range node.array {
+		tbl.Pairs[String(Number(i).String())] = it.eval(v)
+	}
+	return tbl
 }
 
-func (it *Interpreter) functionLit(node *functionLit) Value {
-	return nil
+func (it *Interpreter) functionLit(node *functionLit) *Closure {
+	return &Closure{
+		closure: it.env,
+		params:  node.params,
+		block:   node.body,
+	}
 }
 
 func (it *Interpreter) assignExpr(node *assignExpr) Value {
@@ -276,9 +284,9 @@ func (it *Interpreter) prefixExpr(node *prefixExpr) Value {
 
 	switch node.op.tokenType {
 	case tokenMinus:
-		return -rVal.(Float)
+		return -rVal.(Number)
 	case tokenPlus:
-		return +rVal.(Float)
+		return +rVal.(Number)
 
 	case tokenExcl:
 		return Boolean(testValue(rVal))
@@ -299,27 +307,80 @@ func (it *Interpreter) infixExpr(node *infixExpr) Value {
 		return Boolean(rVal != lVal)
 
 	case tokenLAngle:
-		return Boolean(rVal.(Float) < lVal.(Float))
+		return Boolean(rVal.(Number) < lVal.(Number))
 	case tokenLAngleEq:
-		return Boolean(rVal.(Float) <= lVal.(Float))
+		return Boolean(rVal.(Number) <= lVal.(Number))
 	case tokenRAngle:
-		return Boolean(rVal.(Float) > lVal.(Float))
+		return Boolean(rVal.(Number) > lVal.(Number))
 	case tokenRAngleEq:
-		return Boolean(rVal.(Float) >= lVal.(Float))
+		return Boolean(rVal.(Number) >= lVal.(Number))
 
 	case tokenPlus:
-		return rVal.(Float) + lVal.(Float)
+		return rVal.(Number) + lVal.(Number)
 	case tokenMinus:
-		return rVal.(Float) - lVal.(Float)
+		return rVal.(Number) - lVal.(Number)
 	case tokenStar:
-		return rVal.(Float) * lVal.(Float)
+		return rVal.(Number) * lVal.(Number)
 	case tokenSlash:
-		return rVal.(Float) / lVal.(Float)
+		return rVal.(Number) / lVal.(Number)
 	case tokenPercent:
-		return Float(math.Mod(float64(rVal.(Float)), float64(lVal.(Float))))
+		return Number(math.Mod(float64(rVal.(Number)), float64(lVal.(Number))))
 
 	default:
 		panic(unreachable)
+	}
+}
+
+func (it *Interpreter) callExpr(node *callExpr) (value Value) {
+	callee := it.eval(node.left)
+	args := []Value{}
+	for _, arg := range node.args {
+		args = append(args, it.eval(arg))
+	}
+
+	switch callee := callee.(type) {
+	case *Native:
+		return callee.fn(it, args)
+	case *Closure:
+		// Use function closure.
+		savedEnv := it.env
+		it.env = callee.closure
+		defer func() { it.env = savedEnv }()
+
+		// Create function environment.
+		it.beginScope()
+		defer it.endScope()
+
+		// Load args in function environment.
+		it.loadArgs(callee.params, node.args)
+
+		// Catching return value.
+		defer catch(func(ret returnSignal) { value = ret })
+
+		// Eval function body.
+		for _, node := range callee.block {
+			it.eval(node)
+		}
+
+		// Default return is nihil.
+		return Nihil{}
+	default:
+		panic("ERROR")
+	}
+}
+
+func (it *Interpreter) loadArgs(params []varName, args []astExpr) {
+	for i, param := range params {
+		if i < len(args) {
+			it.define(param, it.eval(args[i]))
+		} else {
+			it.define(param, Nihil{})
+		}
+	}
+	if len(params) < len(args) {
+		for i := len(params); i < len(args); i++ {
+			it.eval(args[i])
+		}
 	}
 }
 
